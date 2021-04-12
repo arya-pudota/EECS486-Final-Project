@@ -20,12 +20,9 @@ def parse_article_content(url):
         "from": "pudota@umich.edu"
     })
     soup = BeautifulSoup(r.text, "html.parser")
-    table = soup.findAll('p')
-    text = ""
-    for p_tag in table:
-        text += p_tag.text + " "
-    content = text.replace("\n", " ")
-    return content
+    heading = soup.find('h1', attrs={'class': 'entry-title'}).text.strip('\n')
+    content = soup.find('div', attrs={'class': 'entry-content'}).text.strip('\n')
+    return heading, content
 
 
 def tokenize_sentence():
@@ -35,10 +32,42 @@ def tokenize_sentence():
     :return: list containing sentences that are in the article, original text
     """
     url = argv[1]
-    contents_text = parse_article_content(url)
+    heading, contents_text = parse_article_content(url)
     content_sents = list(nlp(contents_text).sents)
     return content_sents, contents_text
 
+
+def build_correlation_matrix(content_sents):
+    sentence_scores = {}
+    for sentence_considered_index in range(len(content_sents)):
+        sentence_considered = set(content_sents[sentence_considered_index])
+        score = 0
+        for sentence_checked_index in range(len(content_sents)):
+            if sentence_considered_index != sentence_checked_index:
+                sentence_check = set(content_sents[sentence_checked_index])
+                for token_1 in sentence_considered:
+                    for token_2 in sentence_check:
+                        if not token_1.is_punct and not token_1.is_stop and not token_2.is_punct and not token_2.is_stop:
+                            if str(token_1.lemma_) == str(token_2.lemma_):
+                                score += 1
+        sentence_scores[sentence_considered_index] = {
+            'sentence': content_sents[sentence_considered_index],
+            'score': score
+        }
+    top_sentences = sorted(sentence_scores.items(), key=lambda item: item[1]['score'], reverse=True)
+    final_sentences = list()
+    max_length = 350 #value defined given average reading spead of 250 wpm, spacy also accounts for punctuations, hence we selected
+    for sentence in top_sentences:
+        if max_length > len(sentence[1]['sentence']):
+            final_sentences.append(sentence)
+            max_length -= len(sentence[1]['sentence'])
+        else:
+            break
+    final_sentences = tuple(final_sentences)
+    ordered_final_sentences = sorted(final_sentences, key=lambda item: item[0])
+    first_sentence_included = False
+    for sentence in ordered_final_sentences:
+        print(str(sentence[1]['sentence']).strip())
 
 def build_pos_analysis(sentences):
     pos_sentence_dict = {}
@@ -75,10 +104,10 @@ def score_sentences(pos_text_dict, pos_sentence_dict):
         score = 0
         if 'PROPN' in pos_sentence_dict[sentence]:
             for token in pos_sentence_dict[sentence]['PROPN']:
-                score += 3 * log(pos_text_dict['PROPN'][token] * pos_sentence_dict[sentence]['PROPN'][token])
+                score += 1 * log(pos_text_dict['PROPN'][token] * pos_sentence_dict[sentence]['PROPN'][token])
         if 'VERB' in pos_sentence_dict[sentence]:
             for token in pos_sentence_dict[sentence]['VERB']:
-                score += 2 * log(pos_text_dict['VERB'][token] * pos_sentence_dict[sentence]['VERB'][token])
+                score += 1 * log(pos_text_dict['VERB'][token] * pos_sentence_dict[sentence]['VERB'][token])
         if 'NOUN' in pos_sentence_dict[sentence]:
             for token in pos_sentence_dict[sentence]['NOUN']:
                 score += 1 * log(pos_text_dict['NOUN'][token] * pos_sentence_dict[sentence]['NOUN'][token])
@@ -87,7 +116,7 @@ def score_sentences(pos_text_dict, pos_sentence_dict):
 
 
 def summarized_article(sentence_scores):
-    sorted_sentences = sorted(sentence_scores.items(), key=lambda item: item[1])
+    sorted_sentences = sorted(sentence_scores.items(), key=lambda item: item[1], reverse=True)
     max_length = 250
     summary = dict()
     for sentence_score in sorted_sentences:
@@ -109,7 +138,9 @@ def summarized_article(sentence_scores):
     print(final_summary)
 
 if __name__ == "__main__":
-    sentences = tokenize_sentence()
-    pos_text_dict, pos_sentence_dict = build_pos_analysis(sentences)
-    sentence_scores = score_sentences(pos_text_dict, pos_sentence_dict)
-    summarized_article(sentence_scores)
+    # sentences = tokenize_sentence()
+    # pos_text_dict, pos_sentence_dict = build_pos_analysis(sentences)
+    # sentence_scores = score_sentences(pos_text_dict, pos_sentence_dict)
+    # summarized_article(sentence_scores)
+    content_sents, contents_text = tokenize_sentence()
+    build_correlation_matrix(content_sents)
