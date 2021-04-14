@@ -8,6 +8,7 @@ from math import log
 
 nlp = spacy.load('en_core_web_sm')
 
+
 def parse_article_content(url):
     """
     Parses a Michigan Daily article that is linked to by the url argument, and returns the data present
@@ -35,7 +36,56 @@ def tokenize_sentence(url):
     return content_sentences, contents_text
 
 
-def build_correlation_scores(content_sentences):
+def build_tf_idf_scores(content_sentences):
+    damping = 0.85
+    convergence = 0.001
+    graph = {}
+    nodes_to_be_considered = dict()
+    for sentence in content_sentences:
+        tokens = []
+        for token in sentence:
+            if not token.is_punct and not token.is_stop:
+                nodes_to_be_considered[token.lemma_.lower()] = 0.25
+                tokens.append(str(token.lemma_.lower()))
+        for token_index in range(len(tokens)-2):
+            token_1 = tokens[token_index]
+            token_2 = tokens[token_index+1]
+            token_3 = tokens[token_index+2]
+            if token_1 not in graph:
+                graph[token_1] = {}
+                graph[token_1]["textrank"] = 0.25
+                graph[token_1]["successors"] = []
+                graph[token_1]["predecessors"] = []
+            if token_2 not in graph:
+                graph[token_2] = {}
+                graph[token_2]["textrank"] = 0.25
+                graph[token_2]["successors"] = []
+                graph[token_2]["predecessors"] = []
+            if token_3 not in graph:
+                graph[token_3] = {}
+                graph[token_3]["textrank"] = 0.25
+                graph[token_3]["successors"] = []
+                graph[token_3]["predecessors"] = []
+            graph[token_1]["successors"].append(token_2)
+            graph[token_2]["predecessors"].append(token_1)
+            graph[token_2]["successors"].append(token_3)
+            graph[token_3]["predecessors"].append(token_2)
+    max_diff = 1
+    while max_diff > convergence:
+        max_diff = 0
+        for vertex in nodes_to_be_considered:
+            old_textrank = graph[vertex]["textrank"]
+            text_sum = 0
+            for pre_vertex in graph[vertex]["predecessors"]:
+                text_sum += 1 / len(graph[pre_vertex]["successors"]) * graph[pre_vertex]["textrank"]
+            new_textrank = (1 - damping) / len(nodes_to_be_considered) + damping * text_sum
+            if abs(new_textrank - old_textrank) > max_diff:
+                max_diff = abs(new_textrank - old_textrank)
+            graph[vertex]["textrank"] = new_textrank
+            nodes_to_be_considered[vertex] = new_textrank
+    return nodes_to_be_considered
+
+def build_correlation_scores(content_sentences, nodes_to_be_considered):
     """
     Builds a correlation dictionary that compares sentences to other sentences in the article, performs cosine-similarity
     calculations using the Bag of Words model and computes the outcome for all sentences stored in the dictionary
@@ -52,8 +102,8 @@ def build_correlation_scores(content_sentences):
                 for token_1 in sentence_considered:
                     for token_2 in sentence_check:
                         if not token_1.is_punct and not token_1.is_stop and not token_2.is_punct and not token_2.is_stop:
-                            if str(token_1.lemma_) == str(token_2.lemma_):
-                                score += 1
+                            if str(token_1.lemma_.lower()) == str(token_2.lemma_.lower()):
+                                score += nodes_to_be_considered[str(token_1.lemma_.lower())]
         sentence_scores[sentence_considered_index] = {
             'sentence': content_sentences[sentence_considered_index],
             'score': score
@@ -72,16 +122,26 @@ def select_top_sentences(sentence_scores):
     top_sentences = sorted(sentence_scores.items(), key=lambda item: item[1]['score'], reverse=True)
     final_sentences = list()
     # value defined given average reading speed of 250 wpm, SpaCy also accounts for punctuations, hence we selected
-    max_length = 350
+    max_length = 250
     for sentence in top_sentences:
         if max_length > len(sentence[1]['sentence']):
             final_sentences.append(sentence)
-            max_length -= len(sentence[1]['sentence'])
+            for token in sentence[1]['sentence']:
+                if not token.is_punct:
+                    max_length -= 1
         else:
             break
     final_sentences = tuple(final_sentences)
     ordered_final_sentences = sorted(final_sentences, key=lambda item: item[0])
     summary = ""
     for sentence in ordered_final_sentences:
-        summary += str(sentence[1]['sentence']).strip()
+        summary += str(sentence[1]['sentence']).strip() + "\n\n"
     return summary
+
+if __name__ == "__main__":
+    url = "https://www.michigandaily.com/student-government/csg-discusses-internal-procedures-confirms-cabinet-positions/"
+    content_sentences, content_text = tokenize_sentence(url)
+    textrank_scores = build_tf_idf_scores(content_sentences)
+    sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+    print(select_top_sentences(sentence_scores))
+
