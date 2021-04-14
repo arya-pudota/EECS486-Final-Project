@@ -186,13 +186,16 @@ def return_summary(url):
 
 
 if __name__ == "__main__":
-    url = "https://www.michigandaily.com/michigan-in-color/hope-within-borders-the-impending-movement-of-the-north-korean-people/"
-    heading, content = parse_article_content(url)
-    content_sentences, content_text = tokenize_sentence(content)
-    graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
-    textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
-    sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
-    print(heading)
-    print()
-    print(select_top_sentences(sentence_scores))
+    while True:
+        url = input("Enter URL here, or enter 'exit': ")
+        if url == "exit":
+            break
+        heading, content = parse_article_content(url)
+        content_sentences, content_text = tokenize_sentence(content)
+        graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
+        textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
+        sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+        print(heading)
+        print()
+        print(select_top_sentences(sentence_scores))
 
