@@ -157,11 +157,11 @@ def select_top_sentences(sentence_scores):
     # value defined given average reading speed of 250 wpm, SpaCy also accounts for punctuations, hence we selected
     max_length = 250
     for sentence in top_sentences:
-        if max_length > len(sentence[1]['sentence']):
+        for token in sentence[1]['sentence']:
+            if not token.is_punct:
+                max_length -= 1
+        if max_length >= 0:
             final_sentences.append(sentence)
-            for token in sentence[1]['sentence']:
-                if not token.is_punct:
-                    max_length -= 1
         else:
             break
     final_sentences = tuple(final_sentences)
@@ -187,15 +187,34 @@ def return_summary(url):
 
 if __name__ == "__main__":
     while True:
-        url = input("Enter URL here, or enter 'exit': ")
-        if url == "exit":
+        choice = input("Enter choice: '1' -> URL, '2'-> text, or enter 'exit': ")
+        if choice == 'exit':
             break
-        heading, content = parse_article_content(url)
-        content_sentences, content_text = tokenize_sentence(content)
-        graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
-        textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
-        sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
-        print(heading)
-        print()
-        print(select_top_sentences(sentence_scores))
+        try:
+            if int(choice) == 1:
+                url = input("Enter URL here, or enter 'exit': ")
+                if url == "exit":
+                    break
+                try:
+                    heading, content = parse_article_content(url)
+                    content_sentences, content_text = tokenize_sentence(content)
+                    graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
+                    textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
+                    sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+                    print(heading)
+                    print()
+                    print(select_top_sentences(sentence_scores))
+                except:
+                    print("Invalid URL!")
+            if int(choice) == 2:
+                content = input("Enter content here, or enter 'exit': ")
+                content_sentences, content_text = tokenize_sentence(content)
+                graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
+                textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
+                sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+                print()
+                print("Compressed Text:")
+                print(select_top_sentences(sentence_scores))
+        except ValueError or TypeError:
+            print("Invalid Input! Try Again.")
 
