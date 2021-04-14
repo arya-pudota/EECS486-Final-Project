@@ -5,6 +5,7 @@ import spacy
 from sys import argv
 from bs4 import BeautifulSoup
 from math import log
+import re
 
 nlp = spacy.load('en_core_web_sm')
 
@@ -22,6 +23,7 @@ def parse_article_content(url):
     soup = BeautifulSoup(r.text, "html.parser")
     heading = soup.find('h1', attrs={'class': 'entry-title'}).text.strip('\n')
     content = soup.find('div', attrs={'class': 'entry-content'}).text.strip('\n')
+    content = re.sub('\n', ' ', content)
     return heading, content
 
 
@@ -36,16 +38,34 @@ def tokenize_sentence(url):
     return content_sentences, contents_text
 
 
-def build_tf_idf_scores(content_sentences):
-    damping = 0.85
-    convergence = 0.001
-    graph = {}
+def build_node_dictionary(content_sentences):
+    """
+    Builds the set of nodes that will be considered when building the TextRank graph for score calculations.
+    :param content_sentences:
+    :return: a dictionary containing all nodes and their initialized scores
+    """
     nodes_to_be_considered = dict()
+    for sentence in content_sentences:
+        for token in sentence:
+            if not token.is_punct and not token.is_stop:
+                nodes_to_be_considered[str(token.lemma_.lower())] = 1
+    return nodes_to_be_considered
+
+
+def build_textrank_graph(content_sentences):
+    """
+    Builds the TextRank graph that will be used to calculate scores for all of the nodes in the graph. Uses
+    co-occurrence of lexical units in a 3-word window, excluding punctuations and stop-words
+    :param content_sentences:
+    :return: graph: dictionary containing all the nodes and edges for the node, nodes_to_be_considered: dictionary
+    containing all the nodes in the graph and the corresponding initalized TextRank scores
+    """
+    graph = {}
+    nodes_to_be_considered = build_node_dictionary(content_sentences)
     for sentence in content_sentences:
         tokens = []
         for token in sentence:
             if not token.is_punct and not token.is_stop:
-                nodes_to_be_considered[token.lemma_.lower()] = 0.25
                 tokens.append(str(token.lemma_.lower()))
         for token_index in range(len(tokens)-2):
             token_1 = tokens[token_index]
@@ -70,7 +90,26 @@ def build_tf_idf_scores(content_sentences):
             graph[token_2]["predecessors"].append(token_1)
             graph[token_2]["successors"].append(token_3)
             graph[token_3]["predecessors"].append(token_2)
+    for token in nodes_to_be_considered:
+        if token not in graph:
+            graph[token] = {}
+            graph[token]["textrank"] = 0.25
+            graph[token]["successors"] = []
+            graph[token]["predecessors"] = []
+    return graph, nodes_to_be_considered
+
+
+def calculate_textrank(graph, nodes_to_be_considered):
+    """
+    Uses the TextRank algorithm (https://web.eecs.umich.edu/~mihalcea/papers/mihalcea.emnlp04.pdf) in order to build
+    the TextRank of all nodes present in the graph entered as an argument.
+    :param graph:
+    :param nodes_to_be_considered:
+    :return: nodes_to_be_considered: a dictionary containing all of the nodes with their final TextRank scores.
+    """
+    damping = 0.85
     max_diff = 1
+    convergence = 0.001
     while max_diff > convergence:
         max_diff = 0
         for vertex in nodes_to_be_considered:
@@ -84,6 +123,7 @@ def build_tf_idf_scores(content_sentences):
             graph[vertex]["textrank"] = new_textrank
             nodes_to_be_considered[vertex] = new_textrank
     return nodes_to_be_considered
+
 
 def build_correlation_scores(content_sentences, nodes_to_be_considered):
     """
@@ -106,7 +146,7 @@ def build_correlation_scores(content_sentences, nodes_to_be_considered):
                                 score += nodes_to_be_considered[str(token_1.lemma_.lower())]
         sentence_scores[sentence_considered_index] = {
             'sentence': content_sentences[sentence_considered_index],
-            'score': score
+            'score': score / len(content_sentences[sentence_considered_index])
         }
     return sentence_scores
 
@@ -135,13 +175,24 @@ def select_top_sentences(sentence_scores):
     ordered_final_sentences = sorted(final_sentences, key=lambda item: item[0])
     summary = ""
     for sentence in ordered_final_sentences:
-        summary += str(sentence[1]['sentence']).strip() + "\n\n"
+        summary += str(sentence[1]['sentence']).strip() + "\n"
     return summary
 
-if __name__ == "__main__":
-    url = "https://www.michigandaily.com/student-government/csg-discusses-internal-procedures-confirms-cabinet-positions/"
+
+def return_summary(url):
     content_sentences, content_text = tokenize_sentence(url)
-    textrank_scores = build_tf_idf_scores(content_sentences)
+    graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
+    textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
+    sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+    summary = select_top_sentences(sentence_scores)
+    return summary
+
+
+if __name__ == "__main__":
+    url = "https://www.michigandaily.com/news-briefs/dr-robert-sellers-to-step-down-as-u-m-chief-diversity-officer-in-december/"
+    content_sentences, content_text = tokenize_sentence(url)
+    graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
+    textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
     sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
     print(select_top_sentences(sentence_scores))
 
