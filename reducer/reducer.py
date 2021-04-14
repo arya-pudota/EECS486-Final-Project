@@ -2,12 +2,11 @@
 
 import requests
 import spacy
-from sys import argv
 from bs4 import BeautifulSoup
-from math import log
 import re
 
 nlp = spacy.load('en_core_web_sm')
+pos_tags = {"NOUN", "PROPN", "ADJ"}
 
 
 def parse_article_content(url):
@@ -21,19 +20,19 @@ def parse_article_content(url):
         "from": "pudota@umich.edu"
     })
     soup = BeautifulSoup(r.text, "html.parser")
-    heading = soup.find('h1', attrs={'class': 'entry-title'}).text.strip('\n')
+    heading = soup.find('h1', attrs={'class': 'entry-title'}).text.strip()
     content = soup.find('div', attrs={'class': 'entry-content'}).text.strip('\n')
     content = re.sub('\n', ' ', content)
+    content = re.sub('-', '', content)
     return heading, content
 
 
-def tokenize_sentence(url):
+def tokenize_sentence(contents_text):
     """
     Parses the url that is given as an argument at the command line and returns a list containing the sentences present
     in the article.
     :return: list containing sentences that are in the article, original text
     """
-    heading, contents_text = parse_article_content(url)
     content_sentences = list(nlp(contents_text).sents)
     return content_sentences, contents_text
 
@@ -47,7 +46,7 @@ def build_node_dictionary(content_sentences):
     nodes_to_be_considered = dict()
     for sentence in content_sentences:
         for token in sentence:
-            if not token.is_punct and not token.is_stop:
+            if not token.is_punct and not token.is_stop and token.pos_ in pos_tags:
                 nodes_to_be_considered[str(token.lemma_.lower())] = 1
     return nodes_to_be_considered
 
@@ -65,12 +64,12 @@ def build_textrank_graph(content_sentences):
     for sentence in content_sentences:
         tokens = []
         for token in sentence:
-            if not token.is_punct and not token.is_stop:
+            x = token.pos_
+            if not token.is_punct and not token.is_stop and token.pos_ in pos_tags:
                 tokens.append(str(token.lemma_.lower()))
-        for token_index in range(len(tokens)-2):
+        for token_index in range(len(tokens)-1):
             token_1 = tokens[token_index]
             token_2 = tokens[token_index+1]
-            token_3 = tokens[token_index+2]
             if token_1 not in graph:
                 graph[token_1] = {}
                 graph[token_1]["textrank"] = 0.25
@@ -81,15 +80,8 @@ def build_textrank_graph(content_sentences):
                 graph[token_2]["textrank"] = 0.25
                 graph[token_2]["successors"] = []
                 graph[token_2]["predecessors"] = []
-            if token_3 not in graph:
-                graph[token_3] = {}
-                graph[token_3]["textrank"] = 0.25
-                graph[token_3]["successors"] = []
-                graph[token_3]["predecessors"] = []
             graph[token_1]["successors"].append(token_2)
             graph[token_2]["predecessors"].append(token_1)
-            graph[token_2]["successors"].append(token_3)
-            graph[token_3]["predecessors"].append(token_2)
     for token in nodes_to_be_considered:
         if token not in graph:
             graph[token] = {}
@@ -141,12 +133,13 @@ def build_correlation_scores(content_sentences, nodes_to_be_considered):
                 sentence_check = set(content_sentences[sentence_checked_index])
                 for token_1 in sentence_considered:
                     for token_2 in sentence_check:
-                        if not token_1.is_punct and not token_1.is_stop and not token_2.is_punct and not token_2.is_stop:
+                        if not token_1.is_punct and not token_1.is_stop and token_1.pos_ in pos_tags\
+                                and not token_2.is_punct and not token_2.is_stop and token_2.pos_ in pos_tags:
                             if str(token_1.lemma_.lower()) == str(token_2.lemma_.lower()):
                                 score += nodes_to_be_considered[str(token_1.lemma_.lower())]
         sentence_scores[sentence_considered_index] = {
             'sentence': content_sentences[sentence_considered_index],
-            'score': score / len(content_sentences[sentence_considered_index])
+            'score': score
         }
     return sentence_scores
 
@@ -180,19 +173,26 @@ def select_top_sentences(sentence_scores):
 
 
 def return_summary(url):
-    content_sentences, content_text = tokenize_sentence(url)
+    heading, content = parse_article_content(url)
+    content_sentences, content_text = tokenize_sentence(content)
     graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
     textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
     sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
-    summary = select_top_sentences(sentence_scores)
-    return summary
+    return {
+        "url": url,
+        "heading": heading,
+        "content": select_top_sentences(sentence_scores)
+    }
 
 
 if __name__ == "__main__":
-    url = "https://www.michigandaily.com/news-briefs/dr-robert-sellers-to-step-down-as-u-m-chief-diversity-officer-in-december/"
-    content_sentences, content_text = tokenize_sentence(url)
+    url = "https://www.michigandaily.com/michigan-in-color/hope-within-borders-the-impending-movement-of-the-north-korean-people/"
+    heading, content = parse_article_content(url)
+    content_sentences, content_text = tokenize_sentence(content)
     graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
     textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
     sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+    print(heading)
+    print()
     print(select_top_sentences(sentence_scores))
 
