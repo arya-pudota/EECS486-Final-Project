@@ -1,5 +1,5 @@
 """
-politiquiz python package configuration.
+reducer python package configuration.
 
 """
 
