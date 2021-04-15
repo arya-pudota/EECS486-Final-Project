@@ -13,7 +13,9 @@
         <img src="{{image_url}}" alt="Image from article" />
     {% endif %}
     <p>
-        {{article_summary}}
+        {% for sentence in article_summary %}
+            {{sentence}} <br>
+        {% endfor %}
     </p>
     <p>
         Reduced article length by {{reduced_percent}} %.
@@ -22,6 +24,9 @@
         Want to summarize another article?
         <a href="{{home_url}}">Click here</a>
         to go back to the homepage.
+    </p>
+    <p>
+        To learn more about this article, access the full article <a href="{{article_url}}"> here </a>
     </p>
 </body>
 </html>

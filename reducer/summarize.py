@@ -180,9 +180,9 @@ def select_top_sentences(sentence_scores):
             break
     final_sentences = tuple(final_sentences)
     ordered_final_sentences = sorted(final_sentences, key=lambda item: item[0])
-    summary = ""
+    summary = list()
     for sentence in ordered_final_sentences:
-        summary += str(sentence[1]['sentence']).strip() + "\n"
+        summary.append(str(sentence[1]['sentence']).strip())
     return summary
 
 
@@ -193,9 +193,13 @@ def return_summary(url):
     textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
     sentence_scores = build_correlation_scores(content_sentences, textrank_scores, heading)
     article_summary = select_top_sentences(sentence_scores)
-    reduced_percent = round((1 - len(article_summary)/len(content))*100, 0)
+    article_summary_length = 0
+    for sentence in article_summary:
+        article_summary_length += len(sentence)
+    reduced_percent = round((1 - article_summary_length/len(content))*100, 0)
     return {
-        "home_url": url,
+        "home_url": "/",
+        "article_url": url,
         "article_title": heading,
         "article_summary": article_summary,
         "image_url": img_url,
