@@ -22,8 +22,14 @@ def parse_article_content(url):
     soup = BeautifulSoup(r.text, "html.parser")
     heading = soup.find('h1', attrs={'class': 'entry-title'}).text.strip()
     content = soup.find('div', attrs={'class': 'entry-content'}).text.strip('\n')
+    img_url = ""
+    try:
+        tag = soup.find('figure', attrs={'class': 'post-thumbnail'})
+        img_url = tag.findChild('img')['src']
+    except:
+        pass
     content = re.sub('\n', ' ', content)
-    return heading, content
+    return heading, content, img_url
 
 
 def tokenize_sentence(contents_text):
@@ -181,15 +187,19 @@ def select_top_sentences(sentence_scores):
 
 
 def return_summary(url):
-    heading, content = parse_article_content(url)
+    heading, content, img_url = parse_article_content(url)
     content_sentences, content_text = tokenize_sentence(content)
     graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
     textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
     sentence_scores = build_correlation_scores(content_sentences, textrank_scores, heading)
+    article_summary = select_top_sentences(sentence_scores)
+    reduced_percent = round((1 - len(article_summary)/len(content))*100, 0)
     return {
-        "url": url,
-        "heading": heading,
-        "content": select_top_sentences(sentence_scores)
+        "home_url": url,
+        "article_title": heading,
+        "article_summary": article_summary,
+        "image_url": img_url,
+        "reduced_percent": str(reduced_percent)
     }
 
 
@@ -203,7 +213,7 @@ if __name__ == "__main__":
                 url = input("Enter URL here, or enter 'exit': ")
                 if url == "exit":
                     break
-                heading, content = parse_article_content(url)
+                heading, content, img_url = parse_article_content(url)
                 content_sentences, content_text = tokenize_sentence(content)
                 graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
                 textrank_scores = calculate_textrank(graph, nodes_to_be_considered)

@@ -13,9 +13,11 @@
         <img src="{{image_url}}" alt="Image from article" />
     {% endif %}
     <p>
-        {{ article_summary }}
+        {{article_summary}}
     </p>
-
+    <p>
+        Reduced article length by {{reduced_percent}} %.
+    </p>
     <p>
         Want to summarize another article?
         <a href="{{home_url}}">Click here</a>
