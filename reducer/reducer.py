@@ -23,7 +23,6 @@ def parse_article_content(url):
     heading = soup.find('h1', attrs={'class': 'entry-title'}).text.strip()
     content = soup.find('div', attrs={'class': 'entry-content'}).text.strip('\n')
     content = re.sub('\n', ' ', content)
-    content = re.sub('-', '', content)
     return heading, content
 
 
@@ -117,7 +116,7 @@ def calculate_textrank(graph, nodes_to_be_considered):
     return nodes_to_be_considered
 
 
-def build_correlation_scores(content_sentences, nodes_to_be_considered):
+def build_correlation_scores(content_sentences, nodes_to_be_considered, heading):
     """
     Builds a correlation dictionary that compares sentences to other sentences in the article, performs cosine-similarity
     calculations using the Bag of Words model and computes the outcome for all sentences stored in the dictionary
@@ -125,6 +124,8 @@ def build_correlation_scores(content_sentences, nodes_to_be_considered):
     :return: dictionary containing correlation scores for all sentences
     """
     sentence_scores = {}
+    heading_set = set(nlp(heading))
+    damping = 0.85
     for sentence_considered_index in range(len(content_sentences)):
         sentence_considered = set(content_sentences[sentence_considered_index])
         score = 0
@@ -137,9 +138,16 @@ def build_correlation_scores(content_sentences, nodes_to_be_considered):
                                 and not token_2.is_punct and not token_2.is_stop and token_2.pos_ in pos_tags:
                             if str(token_1.lemma_.lower()) == str(token_2.lemma_.lower()):
                                 score += nodes_to_be_considered[str(token_1.lemma_.lower())]
+        bias_score = 0
+        for token_1 in sentence_considered:
+            for token_2 in heading_set:
+                if not token_1.is_punct and not token_1.is_stop and token_1.pos_ in pos_tags \
+                        and not token_2.is_punct and not token_2.is_stop and token_2.pos_ in pos_tags:
+                    if str(token_1.lemma_.lower()) == str(token_2.lemma_.lower()):
+                        bias_score += nodes_to_be_considered[str(token_1.lemma_.lower())]
         sentence_scores[sentence_considered_index] = {
             'sentence': content_sentences[sentence_considered_index],
-            'score': score
+            'score': (1-damping) * bias_score + damping*score
         }
     return sentence_scores
 
@@ -177,7 +185,7 @@ def return_summary(url):
     content_sentences, content_text = tokenize_sentence(content)
     graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
     textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
-    sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+    sentence_scores = build_correlation_scores(content_sentences, textrank_scores, heading)
     return {
         "url": url,
         "heading": heading,
@@ -195,23 +203,21 @@ if __name__ == "__main__":
                 url = input("Enter URL here, or enter 'exit': ")
                 if url == "exit":
                     break
-                try:
-                    heading, content = parse_article_content(url)
-                    content_sentences, content_text = tokenize_sentence(content)
-                    graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
-                    textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
-                    sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
-                    print(heading)
-                    print()
-                    print(select_top_sentences(sentence_scores))
-                except:
-                    print("Invalid URL!")
-            if int(choice) == 2:
-                content = input("Enter content here, or enter 'exit': ")
+                heading, content = parse_article_content(url)
                 content_sentences, content_text = tokenize_sentence(content)
                 graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
                 textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
-                sentence_scores = build_correlation_scores(content_sentences, textrank_scores)
+                sentence_scores = build_correlation_scores(content_sentences, textrank_scores, heading)
+                print(heading)
+                print()
+                print(select_top_sentences(sentence_scores))
+            if int(choice) == 2:
+                content = input("Enter content here: ")
+                heading = input("Enter bias query here: ")
+                content_sentences, content_text = tokenize_sentence(content)
+                graph, nodes_to_be_considered = build_textrank_graph(content_sentences)
+                textrank_scores = calculate_textrank(graph, nodes_to_be_considered)
+                sentence_scores = build_correlation_scores(content_sentences, textrank_scores, heading)
                 print()
                 print("Compressed Text:")
                 print(select_top_sentences(sentence_scores))
